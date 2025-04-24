@@ -1,10 +1,8 @@
 scheme_version: 1
-token: token             # Replace with a desired token
+token: "123"             # Replace with a desired token
 os:
   hostname: node1        # Set a hostname. This can be omitted if DHCP server offers hostnames.
-  ssh_authorized_keys:
-  - ssh-rsa ...          # Replace with your public key
-  password: p@ssword     # Replace with a your password
+  password: "123"     # Replace with a your password
   ntp_servers:
   - 0.suse.pool.ntp.org
   - 1.suse.pool.ntp.org
@@ -12,16 +10,16 @@ install:
   mode: create
   management_interface:
     interfaces:
-    - name: ens5
+    - name: enp3s0
     default_route: true
     method: dhcp
     bond_options:
-      mode: balance-tlb
+      mode: active-backup
       miimon: 100
-  device: /dev/sda       # The target disk to install
+  device: /dev/vda       # The target disk to install
   iso_url: https://releases.rancher.com/harvester/master/harvester-master-amd64.iso
 #  tty: ttyS1,115200n8   # For machines without a VGA console
 
-  vip: 10.10.0.19
-  vip_mode: dhcp                   # Or static
-  vip_hw_addr: 52:54:00:ec:0e:0b   # Leave empty when vip_mode is static
+  vip: 192.168.122.100
+  vip_mode: static                   # Or static
+  # vip_hw_addr: 52:54:00:ec:0e:0b   # Leave empty when vip_mode is static
