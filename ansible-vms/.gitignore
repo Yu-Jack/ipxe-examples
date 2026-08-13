@@ -1,0 +1,7 @@
+.vault_pass
+
+# vault — encrypted secrets
+vault.yml
+
+# single file containing all environment-specific variables (copy all.yml.example and fill in real values)
+group_vars/all.yml

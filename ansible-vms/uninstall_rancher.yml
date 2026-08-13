@@ -1,0 +1,50 @@
+- name: Uninstall Rancher
+  hosts: kvm_host
+  become: yes
+  any_errors_fatal: false
+  vars:
+    kubeconfig: /etc/rancher/k3s/k3s.yaml
+
+  tasks:
+    - name: Uninstall Rancher via helm
+      shell: helm uninstall rancher --namespace cattle-system
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      ignore_errors: true
+
+    - name: Uninstall cert-manager via helm
+      shell: helm uninstall cert-manager --namespace cert-manager
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      ignore_errors: true
+
+    - name: Delete cattle-system namespace
+      shell: kubectl delete namespace cattle-system --ignore-not-found
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      ignore_errors: true
+
+    - name: Delete cert-manager namespace
+      shell: kubectl delete namespace cert-manager --ignore-not-found
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      ignore_errors: true
+
+    - name: Uninstall k3s
+      shell: /usr/local/bin/k3s-uninstall.sh
+      ignore_errors: true
+
+    - name: Remove helm binary
+      file:
+        path: /usr/local/bin/helm
+        state: absent
+
+    - name: Remove helm repos cache
+      file:
+        path: /root/.cache/helm
+        state: absent
+
+    - name: Remove helm config
+      file:
+        path: /root/.config/helm
+        state: absent

@@ -1,0 +1,84 @@
+# ── Connection ────────────────────────────────────────────────────────────
+ansible_host:                 192.168.0.1      # your Linux server IP/hostname
+ansible_port:                 22
+ansible_user:                 your_username
+ansible_ssh_private_key_file: ~/.ssh/id_rsa
+ansible_become_password:      "{{ ansible_become_password }}"
+
+# ── Host & KVM environment ─────────────────────────────────────────────────
+# UEFI firmware paths on the Linux server
+ovmf_code:          /usr/share/qemu/ovmf-x86_64-code.bin
+ovmf_vars_template: /usr/share/qemu/ovmf-x86_64-vars.bin
+vm_images_dir:      /var/lib/libvirt/images
+
+# Harvester version to install — controls which PXE tag each VM receives
+# Format: vX.Y.Z  e.g. v1.8.0 → tag harvester_180 / harvester_180_join
+harvester_version: "v1.9.0"
+
+# Common VM settings
+os_variant:   slem5.3
+vnc_listen:   "0.0.0.0"
+vnc_password: "CHANGE_ME"
+
+# Health check — workers wait until master API responds here
+master_healthcheck_url: "https://192.168.122.100"
+healthcheck_retries:   100
+healthcheck_delay_sec:  20
+
+# Node readiness check — SSH into master host IP to count Ready nodes
+master_host_ip:       "192.168.122.61"
+master_ssh_user:      rancher
+node_check_retries:   100
+node_check_delay_sec: 20
+
+# ── Master VM ──────────────────────────────────────────────────────────────
+master_vm:
+  name:    CHANGE_ME          # e.g. harvester-master
+  dhcp_ip:       "192.168.122.61"
+  dhcp_hostname: harvester1
+  memory:  16384              # in MiB
+  vcpus:   8
+  disk_gb: 300
+  networks:
+    - network: default
+      mac: "52:54:00:XX:XX:XX"   # unique MAC for DHCP reservation
+    - network: net123
+    - network: net124
+  # pci_passthrough: []         # uncomment and fill in PCI device IDs to pass through
+  #   - pci_0000_00_00_0
+  # iommu:                      # required when using PCI passthrough
+  #   model:        intel        # or amd
+  #   intremap:     "on"
+  #   caching_mode: "on"
+  # ioapic: qemu
+
+# ── Worker VMs ─────────────────────────────────────────────────────────────
+worker_vms: []
+  # - name:    harvester2
+  #   dhcp_ip:       "192.168.122.62"
+  #   dhcp_hostname: harvester2
+  #   memory:  16384
+  #   vcpus:   8
+  #   disk_gb: 250
+  #   networks:
+  #     - network: default
+  #       mac: "52:54:00:XX:XX:XX"
+  #     - network: net123
+  #   iommu:
+  #     model:        intel
+  #     intremap:     "on"
+  #     caching_mode: "on"
+  #   ioapic: qemu
+
+# ── Rancher ────────────────────────────────────────────────────────────────
+rancher_config:
+  k3s_version: "v1.36.3+k3s1"
+  helm_version: "v4.1.3"
+  rancher_version: "2.15.0"
+  repo: "https://releases.rancher.com/server-charts/latest"
+  # sslip.io provides a DNS name resolving to the IP, no DNS setup needed
+  ip: "192.168.0.1"                              # change to your Rancher node IP
+  hostname: "rancher.192.168.0.1.sslip.io"       # change IP portion to match above
+  bootstrap_password: "CHANGE_ME"
+  cpu: 3
+  memory: 4096

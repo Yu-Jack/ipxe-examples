@@ -1,0 +1,30 @@
+---
+- name: Destroy all VMs
+  hosts: kvm_host
+  become: true
+  vars:
+    _all_vms: "{{ [master_vm] + (worker_vms | default([])) }}"
+  tasks:
+    - name: "{{ item.name }} | force stop"
+      ansible.builtin.command: virsh destroy "{{ item.name }}"
+      failed_when: false
+      changed_when: true
+      loop: "{{ _all_vms }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: "{{ item.name }} | undefine and remove NVRAM"
+      ansible.builtin.command: virsh undefine "{{ item.name }}" --nvram
+      failed_when: false
+      changed_when: true
+      loop: "{{ _all_vms }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: "{{ item.name }} | remove disk image"
+      ansible.builtin.file:
+        path: "{{ vm_images_dir }}/{{ item.name }}.qcow2"
+        state: absent
+      loop: "{{ _all_vms }}"
+      loop_control:
+        label: "{{ item.name }}"

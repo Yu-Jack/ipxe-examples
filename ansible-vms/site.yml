@@ -1,0 +1,109 @@
+---
+# Execution order:
+#   Play 1  →  Configure libvirt default network (dhcp-host tags based on harvester_version)
+#   Play 2  →  Create master VM
+#   Play 3  →  Poll master health check (blocks until ready or timeout)
+#   Play 4  →  Create all worker VMs in parallel (Ansible forks)
+#   Play 5  →  Verify all nodes joined and are Ready
+
+- name: Configure libvirt default network
+  hosts: kvm_host
+  become: true
+  tasks:
+    - name: Template network XML to kvm_host
+      ansible.builtin.template:
+        src: templates/network-default.xml.j2
+        dest: /tmp/network-default.xml
+        mode: '0644'
+
+    - name: Apply network definition
+      ansible.builtin.command: virsh net-define /tmp/network-default.xml
+      changed_when: true
+
+    - name: Restart network to activate changes
+      ansible.builtin.shell: virsh net-destroy default && virsh net-start default
+      changed_when: true
+
+- name: Create master VM
+  hosts: kvm_host
+  become: true
+  tasks:
+    - name: Create master
+      ansible.builtin.include_tasks: tasks/create_vm.yml
+      vars:
+        vm: "{{ master_vm }}"
+
+# Health check runs ON the Linux server (kvm_host) because 192.168.122.x is
+# a libvirt NAT network — not directly reachable from the Ansible control node (Mac).
+- name: Wait for master to be healthy
+  hosts: kvm_host
+  become: false
+  tasks:
+    - name: Poll {{ master_healthcheck_url }} until master responds
+      ansible.builtin.uri:
+        url: "{{ master_healthcheck_url }}"
+        validate_certs: false
+        timeout: 5
+        # Accept any HTTP response — even 4xx/5xx means the service is up
+        status_code: "{{ range(100, 600) | list }}"
+      register: _hc
+      until: _hc.status is defined and _hc.status | int > 0
+      retries: "{{ healthcheck_retries }}"
+      delay: "{{ healthcheck_delay_sec }}"
+
+- name: Create worker VMs
+  hosts: kvm_host
+  become: true
+  tasks:
+    # Workers are created sequentially because include_tasks + loop is serial by default.
+    # If you want true parallel VM creation, split into separate plays or use
+    # ansible.builtin.async / poll: 0 (see README comment below).
+    - name: Create worker {{ item.name }}
+      ansible.builtin.include_tasks: tasks/create_vm.yml
+      vars:
+        vm: "{{ item }}"
+      loop: "{{ worker_vms }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+- name: Verify all nodes joined and are Ready
+  hosts: kvm_host
+  become: false
+  vars:
+    # worker_vms defaults to [] to handle zero-worker deployments
+    _expected: "{{ 1 + (worker_vms | default([]) | length) }}"
+  tasks:
+    - name: Clear stale known_hosts entry for master (key changes after VM rebuild)
+      ansible.builtin.command: ssh-keygen -R "{{ master_host_ip }}"
+      failed_when: false
+      changed_when: true
+
+    - name: Poll until {{ _expected }} node(s) are Ready
+      ansible.builtin.shell: >-
+        ssh -o StrictHostKeyChecking=no {{ master_ssh_user }}@{{ master_host_ip }}
+        "sudo KUBECONFIG=/etc/rancher/rke2/rke2.yaml /var/lib/rancher/rke2/bin/kubectl
+        get nodes --no-headers 2>/dev/null | grep ' Ready' | wc -l | tr -d ' '"
+      register: _ready
+      changed_when: false
+      until: _ready.stdout | int == _expected | int
+      retries: "{{ node_check_retries }}"
+      delay: "{{ node_check_delay_sec }}"
+
+    - name: Assert node count
+      ansible.builtin.assert:
+        that: _ready.stdout | int == _expected | int
+        fail_msg: "Expected {{ _expected }} Ready node(s) but got {{ _ready.stdout }}"
+        success_msg: "All {{ _expected }} node(s) are Ready"
+
+# PARALLEL WORKERS (optional):
+# virt-install --noautoconsole returns immediately, so workers starting
+# sequentially vs in parallel barely matters in practice. But if you want
+# true async creation, replace the worker play above with:
+#
+#   tasks:
+#     - name: Create worker {{ item.name }} (async)
+#       ansible.builtin.shell: >-
+#         virt-install --name {{ item.name }} ... --noautoconsole ...
+#       async: 600
+#       poll: 0
+#       loop: "{{ worker_vms }}"

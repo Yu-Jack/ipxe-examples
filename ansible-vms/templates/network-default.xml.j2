@@ -1,0 +1,40 @@
+{% set _tag = harvester_version | regex_replace('[v.]', '') %}
+{% set _kvm_ip = ansible_host %}
+<network xmlns:dnsmasq='http://libvirt.org/schemas/network/dnsmasq/1.0'>
+  <name>default</name>
+  <uuid>8e96b3b7-06eb-4d84-8c17-8a7338f17596</uuid>
+  <forward mode='nat'/>
+  <bridge name='virbr0' stp='on' delay='0'/>
+  <mac address='52:54:00:22:95:0d'/>
+  <ip address='192.168.122.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.122.2' end='192.168.122.254'/>
+    </dhcp>
+  </ip>
+  <dnsmasq:options>
+    <dnsmasq:option value='enable-tftp'/>
+    <dnsmasq:option value='tftp-root=/var/lib/libvirt/dnsmasq'/>
+    {# dhcp-host entries — dynamically generated from master_vm + worker_vms #}
+    <dnsmasq:option value='dhcp-host={{ master_vm.networks | selectattr("network", "equalto", "default") | map(attribute="mac") | first }},{{ master_vm.dhcp_ip }},{{ master_vm.dhcp_hostname }},set:harvester_{{ _tag }}'/>
+{% for worker in worker_vms | default([]) %}
+    <dnsmasq:option value='dhcp-host={{ worker.networks | selectattr("network", "equalto", "default") | map(attribute="mac") | first }},{{ worker.dhcp_ip }},{{ worker.dhcp_hostname }},set:harvester_{{ _tag }}_join'/>
+{% endfor %}
+    <dnsmasq:option value='dhcp-userclass=set:ipxe,iPXE'/>
+    <dnsmasq:option value='dhcp-boot=tag:!ipxe,ipxe.efi'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_190_join,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-join?version=v1.9.0-rc4&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_190,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-create?version=v1.9.0-rc4&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_180,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-create?version=v1.8.0&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_180_join,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-join?version=v1.8.0&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_master,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-create?version=master&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_master_join,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-join?version=master&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_161,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-create?version=v1.6.1&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_161_join,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-join?version=v1.6.1&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_160,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-create?version=v1.6.0&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_140,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-create?version=v1.4.0&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_151,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-create?version=v1.5.1&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_152,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-create?version=v1.5.2&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_152_join,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-join?version=v1.5.2&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_170,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-create?version=v1.7.0&amp;ip={{ _kvm_ip }}'/>
+    <dnsmasq:option value='dhcp-boot=tag:harvester_170_join,tag:ipxe,http://{{ _kvm_ip }}:6665/ipxe-join?version=v1.7.0&amp;ip={{ _kvm_ip }}'/>
+  </dnsmasq:options>
+</network>

@@ -1,0 +1,79 @@
+---
+# Idempotent: skips the VM if it already exists (virsh dominfo succeeds).
+#
+# Required caller var:
+#   vm  — dict with fields:
+#           name, memory, vcpus, disk_gb
+#           networks: list of {network, mac?}
+#           iommu?:   {model, intremap, caching_mode}
+#           ioapic?:  string (e.g. "qemu")
+#           pci_passthrough?: list of PCI device names (e.g. ["pci_0000_00_14_0"])
+#
+# Inherited from group_vars/all:
+#   ovmf_code, ovmf_vars_template, vm_images_dir, os_variant, vnc_listen, vnc_password
+
+- name: "{{ vm.name }} | check if VM already exists"
+  ansible.builtin.command: virsh dominfo "{{ vm.name }}"
+  register: _vm_exists
+  failed_when: false
+  changed_when: false
+
+- name: "{{ vm.name }} | create qcow2 disk"
+  ansible.builtin.command: >-
+    qemu-img create -f qcow2
+    {{ vm_images_dir }}/{{ vm.name }}.qcow2
+    {{ vm.disk_gb }}G
+  args:
+    creates: "{{ vm_images_dir }}/{{ vm.name }}.qcow2"
+  when: _vm_exists.rc != 0
+
+- name: "{{ vm.name }} | run virt-install"
+  vars:
+    # Build --network flags dynamically; include ,mac= only when defined.
+    _net_flags: >-
+      {%- set ns = namespace(parts=[]) -%}
+      {%- for n in vm.networks -%}
+        {%- set flag = '--network network=' + n.network + ',model=virtio' -%}
+        {%- if n.mac is defined -%}
+          {%- set flag = flag + ',mac=' + n.mac -%}
+        {%- endif -%}
+        {%- set ns.parts = ns.parts + [flag] -%}
+      {%- endfor -%}
+      {{ ns.parts | join(' ') }}
+
+    # Build optional flags: iommu, ioapic, PCI passthrough.
+    _opt_flags: >-
+      {%- set ns = namespace(parts=[]) -%}
+      {%- if vm.iommu is defined -%}
+        {%- set ns.parts = ns.parts + [
+          '--iommu model=' + vm.iommu.model
+          + ',driver.intremap=' + vm.iommu.intremap
+          + ',driver.caching_mode=' + vm.iommu.caching_mode
+        ] -%}
+      {%- endif -%}
+      {%- if vm.ioapic is defined -%}
+        {%- set ns.parts = ns.parts + ['--features ioapic.driver=' + vm.ioapic] -%}
+      {%- endif -%}
+      {%- if vm.pci_passthrough is defined -%}
+        {%- for pci in vm.pci_passthrough -%}
+          {%- set ns.parts = ns.parts + ['--host-device=' + pci] -%}
+        {%- endfor -%}
+      {%- endif -%}
+      {{ ns.parts | join(' ') }}
+
+  ansible.builtin.shell: >-
+    virt-install
+    --name {{ vm.name }}
+    --memory {{ vm.memory }}
+    --vcpus {{ vm.vcpus }}
+    --boot uefi,loader={{ ovmf_code }},loader.readonly=yes,loader.type=pflash,nvram.template={{ ovmf_vars_template }},hd,network
+    --machine q35
+    --os-variant={{ os_variant }}
+    --disk {{ vm_images_dir }}/{{ vm.name }}.qcow2,bus=virtio,format=qcow2,target=vda
+    {{ _net_flags }}
+    --graphics vnc,listen={{ vnc_listen }},password={{ vnc_password }}
+    {{ _opt_flags }}
+    --noautoconsole
+    --check disk_size=off
+  when: _vm_exists.rc != 0
+  changed_when: true
